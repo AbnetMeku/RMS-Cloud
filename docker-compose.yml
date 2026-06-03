@@ -8,7 +8,7 @@ services:
     environment:
       DATABASE_URL: postgresql://rms:rms_password@postgres:5432/rms?schema=public
       REDIS_URL: redis://redis:6379
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3333
       SESSION_SECRET: change-me-in-production
     depends_on:
       postgres:
@@ -49,3 +49,11 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+# Optional future worker for reports, backups, background jobs:
+# worker:
+#   build: .
+#   command: node worker.js
+#   depends_on:
+#     - postgres
+#     - redis

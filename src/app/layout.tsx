@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { OfflineBanner } from "@/components/offline-banner";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import "./globals.css";
 
@@ -22,6 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <OfflineBanner />
         <ServiceWorkerRegister />
         {children}
       </body>

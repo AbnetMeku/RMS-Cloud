@@ -5,25 +5,18 @@ Multi-tenant restaurant order management system built as a responsive PWA.
 ## Stack
 
 - Next.js, React, TypeScript
-- Tailwind CSS
-- PostgreSQL
-- Prisma ORM
-- Redis
+- Tailwind CSS, shadcn-style UI components
+- PostgreSQL, Prisma ORM
+- Redis (sessions + realtime pub/sub)
 - Docker Compose
 
-## Containers
-
-- `app`: Next.js frontend and backend API
-- `postgres`: PostgreSQL database
-- `redis`: realtime/cache/session foundation
-
-## Quick Start
+## Quick Start (local)
 
 ```bash
 cp .env.example .env
 npm install
-npm run prisma:generate
 docker compose up -d postgres redis
+npm run prisma:generate
 npm run prisma:migrate
 npm run db:seed
 npm run dev
@@ -31,59 +24,52 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-## Docker
+## Docker (full stack)
 
 ```bash
 docker compose up --build
 ```
 
-After the app container is running, run migrations from your host or an app shell:
+App: `http://localhost:3333` · Postgres: `localhost:5444` · Redis: `6379`
+
+After first boot, seed from host if needed:
 
 ```bash
-npm run prisma:migrate
 npm run db:seed
 ```
 
 ## Demo Access
 
-- Super Admin: `super@rms.local` / `password123`
-- Admin: `admin@cloudbistro.local` / `password123`
-- Waiter PIN: `1234`
-- Kitchen PIN: `1234`
-- Cashier: `cashier@cloudbistro.local` / `password123`
+| Role | Method | Credential |
+|------|--------|------------|
+| Super Admin | username + password | `superadmin` / `password123` |
+| Admin | username + password | `admin` / `password123` |
+| Manager | username + password | `manager` / `password123` |
+| Cashier | username + password | `cashier` / `password123` |
+| Waiter | PIN (Cloud Bistro) | `1234` |
+| Kitchen/KDS | PIN (Cloud Bistro) | `1234` |
 
-## MVP Scope In This Slice
+## MVP Flow Test
 
-- PostgreSQL schema for tenants, users, permissions, tables, menu, stations, orders, order items, payments, inventory, expenses, and reports.
-- Seed data for one demo tenant.
-- Responsive PWA shell with manifest and service worker.
-- Role dashboards:
-  - Super Admin tenant management
-  - Admin/Manager operations
-  - Waiter ordering
-  - KDS preparation queue
-  - Cashier payment queue
-- Tenant-scoped Prisma service examples for order, KDS, cashier, and reporting flows.
+1. Login as `superadmin` → create a tenant (optional; demo tenant exists)
+2. Login as `admin` → users, tables, stations, menu
+3. Login as `waiter` (PIN) → open table order, send items
+4. Login as `kitchen` (PIN) → mark items ready on KDS
+5. Waiter → close bill
+6. Login as `cashier` → accept payment, print receipt
+7. Login as `admin` → view sales report on dashboard
 
 ## Order Statuses
 
-Orders:
+- **Order:** OPEN → CLOSED → PAID (or CANCELLED)
+- **Order item:** PENDING → READY (or CANCELLED)
 
-- `OPEN`
-- `CLOSED`
-- `PAID`
-- `CANCELLED`
+## Architecture
 
-Order items:
+Modular monolith under `src/modules/` with strict `tenantId` scoping on all queries.
 
-- `PENDING`
-- `READY`
-- `CANCELLED`
+Realtime updates use Redis pub/sub + SSE (`/api/events`).
 
-## Next Implementation Steps
+## Environment
 
-1. Add real authentication and session middleware.
-2. Replace demo dashboard state with Prisma-backed server actions/API routes.
-3. Add Socket.io server integration for KDS/waiter/cashier realtime events.
-4. Add create/edit forms for tenant, users, tables, stations, menu, inventory, and expenses.
-5. Add receipt print layout and payment validation.
+See `.env.example` for `DATABASE_URL`, `REDIS_URL`, `SESSION_SECRET`, `NEXT_PUBLIC_APP_URL`.

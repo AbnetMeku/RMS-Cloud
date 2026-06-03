@@ -1,7 +1,56 @@
 import { PrismaClient, Role, Permission, TableStatus, OrderStatus, OrderItemStatus, PaymentMethod } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
+import "dotenv/config";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL ?? "postgresql://rms:rms_password@localhost:5444/rms?schema=public",
+});
+
+const prisma = new PrismaClient({ adapter });
+
+async function upsertUser(data: {
+  tenantId: string | null;
+  username: string;
+  name: string;
+  email?: string;
+  passwordHash?: string;
+  pinHash?: string;
+  role: Role;
+}) {
+  if (data.tenantId === null) {
+    const existing = await prisma.user.findFirst({
+      where: { tenantId: null, username: data.username },
+    });
+    if (existing) {
+      return prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          name: data.name,
+          email: data.email,
+          passwordHash: data.passwordHash,
+          pinHash: data.pinHash,
+          role: data.role,
+          isActive: true,
+        },
+      });
+    }
+    return prisma.user.create({ data });
+  }
+
+  return prisma.user.upsert({
+    where: { tenantId_username: { tenantId: data.tenantId, username: data.username } },
+    update: {
+      name: data.name,
+      email: data.email,
+      passwordHash: data.passwordHash,
+      pinHash: data.pinHash,
+      role: data.role,
+      isActive: true,
+    },
+    create: data,
+  });
+}
 
 async function main() {
   const passwordHash = await bcrypt.hash("password123", 10);
@@ -24,38 +73,31 @@ async function main() {
     },
   });
 
-  await prisma.user.findFirst({ where: { tenantId: null, email: "super@rms.local" } }) ??
-    await prisma.user.create({
-      data: {
-      name: "Platform Owner",
-      email: "super@rms.local",
-      passwordHash,
-      role: Role.SUPER_ADMIN,
-      },
-    });
-
-  const admin = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: "admin@cloudbistro.local" } },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      name: "Aster Admin",
-      email: "admin@cloudbistro.local",
-      passwordHash,
-      role: Role.ADMIN,
-    },
+  await upsertUser({
+    tenantId: null,
+    username: "superadmin",
+    name: "Platform Owner",
+    email: "super@rms.local",
+    passwordHash,
+    role: Role.SUPER_ADMIN,
   });
 
-  const manager = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: "manager@cloudbistro.local" } },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      name: "Dawit Manager",
-      email: "manager@cloudbistro.local",
-      passwordHash,
-      role: Role.MANAGER,
-    },
+  const admin = await upsertUser({
+    tenantId: tenant.id,
+    username: "admin",
+    name: "Aster Admin",
+    email: "admin@cloudbistro.local",
+    passwordHash,
+    role: Role.ADMIN,
+  });
+
+  const manager = await upsertUser({
+    tenantId: tenant.id,
+    username: "manager",
+    name: "Dawit Manager",
+    email: "manager@cloudbistro.local",
+    passwordHash,
+    role: Role.MANAGER,
   });
 
   await prisma.userPermission.createMany({
@@ -69,40 +111,29 @@ async function main() {
     skipDuplicates: true,
   });
 
-  const waiter = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: "waiter@cloudbistro.local" } },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      name: "Miki Waiter",
-      email: "waiter@cloudbistro.local",
-      pinHash,
-      role: Role.WAITER,
-    },
+  const waiter = await upsertUser({
+    tenantId: tenant.id,
+    username: "waiter",
+    name: "Miki Waiter",
+    pinHash,
+    role: Role.WAITER,
   });
 
-  const kitchenUser = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: "kitchen@cloudbistro.local" } },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      name: "Kitchen Screen",
-      email: "kitchen@cloudbistro.local",
-      pinHash,
-      role: Role.KITCHEN,
-    },
+  const kitchenUser = await upsertUser({
+    tenantId: tenant.id,
+    username: "kitchen",
+    name: "Kitchen Screen",
+    pinHash,
+    role: Role.KITCHEN,
   });
 
-  const cashier = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: "cashier@cloudbistro.local" } },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      name: "Sara Cashier",
-      email: "cashier@cloudbistro.local",
-      passwordHash,
-      role: Role.CASHIER,
-    },
+  const cashier = await upsertUser({
+    tenantId: tenant.id,
+    username: "cashier",
+    name: "Sara Cashier",
+    email: "cashier@cloudbistro.local",
+    passwordHash,
+    role: Role.CASHIER,
   });
 
   const area = await prisma.diningArea.upsert({
@@ -119,7 +150,7 @@ async function main() {
       areaId: area.id,
       name: "T-01",
       capacity: 4,
-      status: TableStatus.OCCUPIED,
+      status: TableStatus.AVAILABLE,
       waiterId: waiter.id,
     },
   });
@@ -150,7 +181,10 @@ async function main() {
   });
 
   await prisma.stationUser.createMany({
-    data: [{ tenantId: tenant.id, stationId: kitchen.id, userId: kitchenUser.id }],
+    data: [
+      { tenantId: tenant.id, stationId: kitchen.id, userId: kitchenUser.id },
+      { tenantId: tenant.id, stationId: bar.id, userId: kitchenUser.id },
+    ],
     skipDuplicates: true,
   });
 
@@ -187,53 +221,59 @@ async function main() {
     },
   });
 
-  const order = await prisma.order.create({
-    data: {
-      tenantId: tenant.id,
-      tableId: tableOne.id,
-      waiterId: waiter.id,
-      status: OrderStatus.CLOSED,
-      subtotal: 580,
-      taxTotal: 87,
-      serviceChargeTotal: 58,
-      grandTotal: 725,
-      closedAt: new Date(),
-      items: {
-        create: [
-          {
-            tenantId: tenant.id,
-            menuItemId: burger.id,
-            stationId: kitchen.id,
-            quantity: 1,
-            unitPrice: 420,
-            totalPrice: 420,
-            status: OrderItemStatus.PENDING,
-            notes: "No onions",
-          },
-          {
-            tenantId: tenant.id,
-            menuItemId: juice.id,
-            stationId: bar.id,
-            quantity: 1,
-            unitPrice: 160,
-            totalPrice: 160,
-            status: OrderItemStatus.READY,
-          },
-        ],
-      },
-    },
+  const existingClosed = await prisma.order.findFirst({
+    where: { tenantId: tenant.id, status: OrderStatus.CLOSED },
   });
 
-  await prisma.payment.create({
-    data: {
-      tenantId: tenant.id,
-      orderId: order.id,
-      cashierId: cashier.id,
-      amount: 300,
-      method: PaymentMethod.CASH,
-      reference: "partial-demo",
-    },
-  });
+  if (!existingClosed) {
+    const order = await prisma.order.create({
+      data: {
+        tenantId: tenant.id,
+        tableId: tableOne.id,
+        waiterId: waiter.id,
+        status: OrderStatus.CLOSED,
+        subtotal: 580,
+        taxTotal: 87,
+        serviceChargeTotal: 58,
+        grandTotal: 725,
+        closedAt: new Date(),
+        items: {
+          create: [
+            {
+              tenantId: tenant.id,
+              menuItemId: burger.id,
+              stationId: kitchen.id,
+              quantity: 1,
+              unitPrice: 420,
+              totalPrice: 420,
+              status: OrderItemStatus.READY,
+              notes: "No onions",
+            },
+            {
+              tenantId: tenant.id,
+              menuItemId: juice.id,
+              stationId: bar.id,
+              quantity: 1,
+              unitPrice: 160,
+              totalPrice: 160,
+              status: OrderItemStatus.READY,
+            },
+          ],
+        },
+      },
+    });
+
+    await prisma.payment.create({
+      data: {
+        tenantId: tenant.id,
+        orderId: order.id,
+        cashierId: cashier.id,
+        amount: 300,
+        method: PaymentMethod.CASH,
+        reference: "partial-demo",
+      },
+    });
+  }
 
   const teff = await prisma.inventoryItem.upsert({
     where: { tenantId_name: { tenantId: tenant.id, name: "Teff Flour" } },
@@ -249,16 +289,21 @@ async function main() {
     },
   });
 
-  await prisma.inventoryPurchase.create({
-    data: {
-      tenantId: tenant.id,
-      inventoryItemId: teff.id,
-      quantity: 25,
-      costPerUnit: 95,
-      supplier: "Merkato Supplier",
-      purchaseDate: new Date(),
-    },
+  const purchaseExists = await prisma.inventoryPurchase.findFirst({
+    where: { tenantId: tenant.id, inventoryItemId: teff.id },
   });
+  if (!purchaseExists) {
+    await prisma.inventoryPurchase.create({
+      data: {
+        tenantId: tenant.id,
+        inventoryItemId: teff.id,
+        quantity: 25,
+        costPerUnit: 95,
+        supplier: "Merkato Supplier",
+        purchaseDate: new Date(),
+      },
+    });
+  }
 
   const utilities = await prisma.expenseCategory.upsert({
     where: { tenantId_name: { tenantId: tenant.id, name: "Utilities" } },
@@ -266,23 +311,29 @@ async function main() {
     create: { tenantId: tenant.id, name: "Utilities" },
   });
 
-  await prisma.expense.create({
-    data: {
-      tenantId: tenant.id,
-      categoryId: utilities.id,
-      amount: 1800,
-      description: "Electricity",
-      paidById: admin.id,
-      expenseDate: new Date(),
-    },
+  const expenseExists = await prisma.expense.findFirst({
+    where: { tenantId: tenant.id, categoryId: utilities.id },
   });
+  if (!expenseExists) {
+    await prisma.expense.create({
+      data: {
+        tenantId: tenant.id,
+        categoryId: utilities.id,
+        amount: 1800,
+        description: "Electricity",
+        paidById: admin.id,
+        expenseDate: new Date(),
+      },
+    });
+  }
 
   console.log("Seeded demo tenant:");
-  console.log("  super@rms.local / password123");
-  console.log("  admin@cloudbistro.local / password123");
-  console.log("  waiter PIN: 1234");
-  console.log("  kitchen PIN: 1234");
-  console.log("  cashier@cloudbistro.local / password123");
+  console.log("  superadmin / password123");
+  console.log("  admin / password123");
+  console.log("  manager / password123");
+  console.log("  cashier / password123");
+  console.log("  waiter PIN: 1234 (tenant: Cloud Bistro)");
+  console.log("  kitchen PIN: 1234 (tenant: Cloud Bistro)");
 }
 
 main()

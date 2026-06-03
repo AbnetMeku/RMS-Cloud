@@ -98,6 +98,7 @@ model User {
   tenantId         String?
   tenant           Tenant?           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name             String
+  username         String
   email            String?
   passwordHash     String?
   pinHash          String?
@@ -112,6 +113,7 @@ model User {
   cashierPayments  Payment[]         @relation("CashierPayments")
   expensesPaid     Expense[]         @relation("ExpensePaidBy")
 
+  @@unique([tenantId, username])
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([tenantId, role])

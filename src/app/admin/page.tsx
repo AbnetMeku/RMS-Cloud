@@ -1,101 +1,59 @@
-import { Boxes, ChefHat, CircleDollarSign, ClipboardList, Table2, Users } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
-import { MetricCard } from "@/components/metric-card";
-import { StatusPill } from "@/components/status-pill";
-import { expenses, inventory, menuItems, reports, stations, tables, users } from "@/lib/demo-data";
+import Link from "next/link";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { getAdminContext } from "@/lib/admin-page";
 import { money } from "@/lib/utils";
+import { getSalesSummary } from "@/modules/reports/service";
+import { listTables } from "@/modules/tables/service";
+import { listTenantUsers } from "@/modules/users/service";
 
-export default function AdminPage() {
+export default async function AdminDashboardPage() {
+  const { tenantId, tenant } = await getAdminContext();
+
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+  const to = new Date();
+  to.setHours(23, 59, 59, 999);
+
+  const [report, tables, users] = await Promise.all([
+    getSalesSummary(tenantId, from, to),
+    listTables(tenantId),
+    listTenantUsers(tenantId),
+  ]);
+
   return (
-    <AppShell title="Admin And Manager Dashboard" eyebrow="Cloud Bistro / tenant controls" active="/admin">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Users" value={`${users.length}`} detail="Role and PIN access" icon={<Users size={20} />} />
-        <MetricCard label="Tables" value={`${tables.length}`} detail="Assigned waiter coverage" icon={<Table2 size={20} />} />
-        <MetricCard label="Stations" value={`${stations.length}`} detail="Menu item routing" icon={<ChefHat size={20} />} />
-        <MetricCard label="Net profit" value={money(reports.netProfit)} detail="Sales minus expenses and purchases" icon={<CircleDollarSign size={20} />} />
+    <div>
+      <h2 className="mb-4 text-xl font-semibold">Overview</h2>
+      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card><CardContent className="pt-6"><p className="text-sm text-slate-500">Sales today</p><p className="text-2xl font-bold">{money(report.sales, tenant.currency)}</p></CardContent></Card>
+        <Card><CardContent className="pt-6"><p className="text-sm text-slate-500">Net profit</p><p className="text-2xl font-bold">{money(report.netProfit, tenant.currency)}</p></CardContent></Card>
+        <Card><CardContent className="pt-6"><p className="text-sm text-slate-500">Paid orders</p><p className="text-2xl font-bold">{report.orderCount}</p></CardContent></Card>
+        <Card><CardContent className="pt-6"><p className="text-sm text-slate-500">Staff</p><p className="text-2xl font-bold">{users.length}</p></CardContent></Card>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <Panel title="Users And Permissions" icon={<Users size={20} />}>
-          {users.map((user) => (
-            <Row key={user.name} primary={user.name} secondary={`${user.role} / ${user.access}`} right={<StatusPill value={user.status} />} />
-          ))}
-        </Panel>
-
-        <Panel title="Tables" icon={<Table2 size={20} />}>
-          {tables.map((table) => (
-            <Row key={table.name} primary={table.name} secondary={`${table.area} / waiter ${table.waiter}`} right={<StatusPill value={table.status} />} />
-          ))}
-        </Panel>
-
-        <Panel title="Menu Routing" icon={<ClipboardList size={20} />}>
-          {menuItems.map((item) => (
-            <Row
-              key={item.name}
-              primary={item.name}
-              secondary={`${item.category} / ${item.station}`}
-              right={<span className="text-sm font-semibold">{money(item.price)}</span>}
-            />
-          ))}
-        </Panel>
-
-        <Panel title="Stations" icon={<ChefHat size={20} />}>
-          {stations.map((station) => (
-            <Row
-              key={station.name}
-              primary={station.name}
-              secondary={`${station.staff} / ${station.activeItems} pending`}
-              right={<span className="text-sm font-semibold">{station.readyItems} ready</span>}
-            />
-          ))}
-        </Panel>
-
-        <Panel title="Inventory" icon={<Boxes size={20} />}>
-          {inventory.map((item) => (
-            <Row
-              key={item.name}
-              primary={item.name}
-              secondary={`${item.category} / ${item.qty} / ${item.supplier}`}
-              right={<span className="text-sm font-semibold">{money(item.cost)}</span>}
-            />
-          ))}
-        </Panel>
-
-        <Panel title="Expenses" icon={<CircleDollarSign size={20} />}>
-          {expenses.map((expense) => (
-            <Row
-              key={`${expense.category}-${expense.description}`}
-              primary={expense.category}
-              secondary={`${expense.description} / ${expense.date}`}
-              right={<span className="text-sm font-semibold">{money(expense.amount)}</span>}
-            />
-          ))}
-        </Panel>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="font-medium">Quick links</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link href="/admin/users"><Button size="sm" variant="outline">Manage users</Button></Link>
+              <Link href="/admin/tables"><Button size="sm" variant="outline">Manage tables</Button></Link>
+              <Link href="/admin/menu"><Button size="sm" variant="outline">Manage menu</Button></Link>
+              <Link href="/admin/reports"><Button size="sm" variant="outline">View reports</Button></Link>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="font-medium">Table status</p>
+            <p className="mt-2 text-sm text-slate-600">
+              {tables.filter((t) => t.status === "AVAILABLE").length} available ·{" "}
+              {tables.filter((t) => t.status === "OCCUPIED").length} occupied ·{" "}
+              {tables.length} total
+            </p>
+          </CardContent>
+        </Card>
       </div>
-    </AppShell>
-  );
-}
-
-function Panel({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <span className="text-slate-500">{icon}</span>
-      </div>
-      <div className="divide-y divide-slate-100">{children}</div>
-    </section>
-  );
-}
-
-function Row({ primary, secondary, right }: { primary: string; secondary: string; right: React.ReactNode }) {
-  return (
-    <div className="grid gap-3 px-5 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
-      <div>
-        <p className="font-medium">{primary}</p>
-        <p className="text-sm text-slate-500">{secondary}</p>
-      </div>
-      {right}
     </div>
   );
 }

@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL ?? "postgresql://rms:rms_password@localhost:5432/rms?schema=public",
+  connectionString: process.env.DATABASE_URL ?? "postgresql://rms:rms_password@localhost:5444/rms?schema=public",
 });
 
 export const prisma =
