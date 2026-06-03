@@ -1,0 +1,387 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  WAITER
+  KITCHEN
+  CASHIER
+}
+
+enum Permission {
+  MANAGE_USERS
+  MANAGE_TABLES
+  MANAGE_MENU
+  MANAGE_STATIONS
+  MANAGE_INVENTORY
+  MANAGE_EXPENSES
+  VIEW_REPORTS
+  MANAGE_ORDERS
+  MANAGE_PAYMENTS
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  INACTIVE
+}
+
+enum OrderStatus {
+  OPEN
+  CLOSED
+  PAID
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  PENDING
+  READY
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  MOBILE_MONEY
+  SPLIT
+}
+
+model Tenant {
+  id                   String                @id @default(cuid())
+  name                 String
+  branchName           String?
+  address              String?
+  phone                String?
+  email                String?
+  logoUrl              String?
+  currency             String                @default("ETB")
+  timezone             String                @default("Africa/Addis_Ababa")
+  taxRate              Decimal               @default(0) @db.Decimal(8, 4)
+  serviceChargeRate    Decimal               @default(0) @db.Decimal(8, 4)
+  subscriptionStatus   TenantStatus          @default(ACTIVE)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  users                User[]
+  diningAreas          DiningArea[]
+  tables               RestaurantTable[]
+  menuCategories       MenuCategory[]
+  menuItems            MenuItem[]
+  stations             Station[]
+  orders               Order[]
+  orderItems           OrderItem[]
+  payments             Payment[]
+  inventoryItems       InventoryItem[]
+  inventoryPurchases   InventoryPurchase[]
+  inventoryAdjustments InventoryAdjustment[]
+  expenseCategories    ExpenseCategory[]
+  expenses             Expense[]
+
+  @@index([subscriptionStatus])
+}
+
+model User {
+  id               String            @id @default(cuid())
+  tenantId         String?
+  tenant           Tenant?           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name             String
+  email            String?
+  passwordHash     String?
+  pinHash          String?
+  role             Role
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  permissions      UserPermission[]
+  assignedTables   RestaurantTable[] @relation("WaiterTables")
+  assignedStations StationUser[]
+  openedOrders     Order[]           @relation("WaiterOrders")
+  cashierPayments  Payment[]         @relation("CashierPayments")
+  expensesPaid     Expense[]         @relation("ExpensePaidBy")
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, role])
+}
+
+model UserPermission {
+  id         String     @id @default(cuid())
+  tenantId   String
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission
+  createdAt  DateTime   @default(now())
+
+  @@unique([userId, permission])
+  @@index([tenantId])
+}
+
+model DiningArea {
+  id        String            @id @default(cuid())
+  tenantId  String
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  tables    RestaurantTable[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model RestaurantTable {
+  id        String      @id @default(cuid())
+  tenantId  String
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  areaId    String?
+  area      DiningArea? @relation(fields: [areaId], references: [id])
+  name      String
+  capacity  Int         @default(2)
+  status    TableStatus @default(AVAILABLE)
+  waiterId  String?
+  waiter    User?       @relation("WaiterTables", fields: [waiterId], references: [id])
+  orders    Order[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([waiterId])
+}
+
+model MenuCategory {
+  id        String         @id @default(cuid())
+  tenantId  String
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  parentId  String?
+  parent    MenuCategory?  @relation("MenuSubcategories", fields: [parentId], references: [id])
+  children  MenuCategory[] @relation("MenuSubcategories")
+  items     MenuItem[]
+  sortOrder Int            @default(0)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([tenantId, name, parentId])
+  @@index([tenantId])
+}
+
+model Station {
+  id         String        @id @default(cuid())
+  tenantId   String
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  isActive   Boolean       @default(true)
+  menuItems  MenuItem[]
+  users      StationUser[]
+  orderItems OrderItem[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model StationUser {
+  id        String   @id @default(cuid())
+  tenantId  String
+  stationId String
+  station   Station  @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([stationId, userId])
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model MenuItem {
+  id          String       @id @default(cuid())
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    MenuCategory @relation(fields: [categoryId], references: [id])
+  stationId   String
+  station     Station      @relation(fields: [stationId], references: [id])
+  name        String
+  description String?
+  price       Decimal      @db.Decimal(12, 2)
+  imageUrl    String?
+  isAvailable Boolean      @default(true)
+  taxEnabled  Boolean      @default(true)
+  orderItems  OrderItem[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([tenantId, categoryId])
+  @@index([stationId])
+}
+
+model Order {
+  id                 String          @id @default(cuid())
+  tenantId           String
+  tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tableId            String
+  table              RestaurantTable @relation(fields: [tableId], references: [id])
+  waiterId           String
+  waiter             User            @relation("WaiterOrders", fields: [waiterId], references: [id])
+  status             OrderStatus     @default(OPEN)
+  subtotal           Decimal         @default(0) @db.Decimal(12, 2)
+  taxTotal           Decimal         @default(0) @db.Decimal(12, 2)
+  serviceChargeTotal Decimal         @default(0) @db.Decimal(12, 2)
+  discountTotal      Decimal         @default(0) @db.Decimal(12, 2)
+  grandTotal         Decimal         @default(0) @db.Decimal(12, 2)
+  openedAt           DateTime        @default(now())
+  closedAt           DateTime?
+  paidAt             DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  items              OrderItem[]
+  payments           Payment[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([tableId])
+  @@index([waiterId])
+}
+
+model OrderItem {
+  id         String          @id @default(cuid())
+  tenantId   String
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderId    String
+  order      Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId String
+  menuItem   MenuItem        @relation(fields: [menuItemId], references: [id])
+  stationId  String
+  station    Station         @relation(fields: [stationId], references: [id])
+  quantity   Int
+  unitPrice  Decimal         @db.Decimal(12, 2)
+  totalPrice Decimal         @db.Decimal(12, 2)
+  status     OrderItemStatus @default(PENDING)
+  notes      String?
+  createdAt  DateTime        @default(now())
+  readyAt    DateTime?
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@index([stationId])
+  @@index([tenantId, status])
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  tenantId  String
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderId   String
+  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  cashierId String
+  cashier   User          @relation("CashierPayments", fields: [cashierId], references: [id])
+  amount    Decimal       @db.Decimal(12, 2)
+  method    PaymentMethod
+  reference String?
+  paidAt    DateTime      @default(now())
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@index([cashierId])
+  @@index([tenantId, paidAt])
+}
+
+model InventoryItem {
+  id          String                @id @default(cuid())
+  tenantId    String
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  category    String?
+  unit        String
+  quantity    Decimal               @default(0) @db.Decimal(12, 3)
+  costPerUnit Decimal               @default(0) @db.Decimal(12, 2)
+  supplier    String?
+  notes       String?
+  purchases   InventoryPurchase[]
+  adjustments InventoryAdjustment[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model InventoryPurchase {
+  id              String        @id @default(cuid())
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  quantity        Decimal       @db.Decimal(12, 3)
+  costPerUnit     Decimal       @db.Decimal(12, 2)
+  supplier        String?
+  purchaseDate    DateTime
+  notes           String?
+  createdAt       DateTime      @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, purchaseDate])
+}
+
+model InventoryAdjustment {
+  id              String        @id @default(cuid())
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  quantityDelta   Decimal       @db.Decimal(12, 3)
+  reason          String
+  createdAt       DateTime      @default(now())
+
+  @@index([tenantId])
+}
+
+model ExpenseCategory {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  expenses  Expense[]
+  createdAt DateTime  @default(now())
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    ExpenseCategory @relation(fields: [categoryId], references: [id])
+  amount      Decimal         @db.Decimal(12, 2)
+  description String?
+  paidById    String?
+  paidBy      User?           @relation("ExpensePaidBy", fields: [paidById], references: [id])
+  expenseDate DateTime
+  receiptUrl  String?
+  createdAt   DateTime        @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, expenseDate])
+}
